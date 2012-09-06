@@ -1,17 +1,22 @@
 
 #include <math.h>
 #include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
 #include <GL/gl.h>
 #include <GL/glut.h>
 
-#define VIEWHEIGHT 700.0
-#define VIEWWIDTH 700.0
+#define VIEWHEIGHT 500.0
+#define VIEWWIDTH 500.0
 #define OFFHEIGHT 100
 #define OFFWIDTH 100
 
 struct pt {
 	GLint x;
 	GLint y;
+	bool valid;
 } linestart, lineend, wnddim;
 
 bool ptCompare(struct pt lhs, struct pt rhs)
@@ -32,75 +37,81 @@ void display(void)
 {
 	glClear(GL_COLOR_BUFFER_BIT);
 	drawView();
-	if(!ptCompare(linestart, lineend))
-		drawLine();
+	drawLine();
 	glFlush();
  	glutSwapBuffers();
 }
 
 void drawLine(void)
 {
-	float dydx = ((GLfloat)linestart.y - lineend.y) /
-		((GLfloat)linestart.x - lineend.x);
-	GLint x = linestart.x;
-	float y = linestart.y;
+	struct pt bound_bl = dispToCoord((struct pt){0, 0, false}),
+		bound_tr = dispToCoord((struct pt){VIEWWIDTH, VIEWHEIGHT, false});
+	if(!linestart.valid || !lineend.valid ||
+		 ptCompare(linestart, lineend) ||
+		 linestart.x < bound_bl.x ||
+		 linestart.x > bound_tr.x ||
+		 lineend.x < bound_bl.x ||
+		 lineend.x > bound_tr.x ||
+		 linestart.y < bound_bl.y ||
+		 linestart.y > bound_tr.y ||
+		 lineend.y < bound_bl.y ||
+		 lineend.y > bound_tr.y)
+		return;
 	glColor3f(1.0f, 0.0f, 0.0f);
 	glBegin(GL_POINTS);
-	printf("dy/dx: %6f\n"
-				 "linestart: x: %4d y: %4d\n"
-				 "lineend:   x: %4d y: %4d\n",
-				 dydx,
-				 linestart.x,
-				 linestart.y,
-				 lineend.x,
-				 lineend.y);
-	while(x <= lineend.x) {
-		struct pt coord = dispToCoord((struct pt){x, (GLint) y});
-		glVertex2i(coord.x, coord.y);
-		x++;
-		y += dydx;
+	GLint deltax = lineend.x - linestart.x,
+		deltay = lineend.y - linestart.y;
+	
+	GLfloat mag = sqrt(deltax * deltax + deltay * deltay),
+		dx = deltax / mag,
+		dy = deltay / mag,
+		x = 0,
+		y = 0;
+	while(abs(x) < abs(deltax) || abs(y) < abs(deltay)) {
+		x += dx;
+		y += dy;
+		glVertex2i(linestart.x + x,
+							 linestart.y + y);
 	}
-	printf("middle:    x: %4d y: %4d\n", x, (GLint)y);
-	while(x >= lineend.x) {
-		struct pt coord = dispToCoord((struct pt){x, (GLint) y});
-		glVertex2i(coord.x, coord.y);
-		x--;
-		y -= dydx;
-	}
-	printf("final:     x: %4d y: %4d\n\n", x, (GLint)y);
 	glEnd();
+	return;
 }
 
 struct pt dispToCoord(struct pt pos)
 {
-	if(pos.x > 0 && pos.x < VIEWWIDTH &&
-		 pos.y > 0 && pos.y < VIEWHEIGHT)
-		return (struct pt){
-			pos.x + OFFWIDTH,
-			pos.y + OFFHEIGHT
-	  };
 	return (struct pt){
-		0,
-		0
-	};
+		(pos.x + OFFWIDTH) * wnddim.x / (VIEWWIDTH + 2 * OFFWIDTH),
+			(pos.y + OFFHEIGHT) * wnddim.y / (VIEWHEIGHT + 2 * OFFHEIGHT),
+			true
+			};
 }
 
 void mpress(int btn, int state, int x, int y)
 {
-	if(x > OFFWIDTH && x < VIEWWIDTH + OFFWIDTH &&
-		 y > OFFHEIGHT && y < VIEWWIDTH + OFFHEIGHT) {
-		x -= OFFWIDTH;
-		y = VIEWHEIGHT - OFFHEIGHT - y;
-		x = (int)((float)x * (VIEWWIDTH + OFFWIDTH) / wnddim.x);
-		y = (int)((float)y * (VIEWHEIGHT + OFFHEIGHT) / wnddim.y);
-		if(btn == GLUT_LEFT_BUTTON) {
-			linestart = dispToCoord((struct pt){x, y});
-			glutPostRedisplay();
-		}
-		else if(btn == GLUT_RIGHT_BUTTON) {
-			lineend = dispToCoord((struct pt){x, y});
-			glutPostRedisplay();
-		}
+	y = wnddim.y - y;
+	struct pt check;
+	check.x = 0;
+	check.y = 0;
+	check.valid = true;
+	struct pt checkbl = dispToCoord(check);
+	check.x = VIEWWIDTH;
+	check.y = VIEWHEIGHT;
+	check.valid = true;
+	struct pt checktr = dispToCoord(check);
+	if(x < checkbl.x || y < checkbl.y ||
+		 x > checktr.x || y > checktr.y)
+		return;
+	if(btn == GLUT_LEFT_BUTTON) {
+		linestart.x = x;
+		linestart.y = y;
+		linestart.valid = true;
+		glutPostRedisplay();
+	}
+	else if(btn == GLUT_RIGHT_BUTTON) {
+		lineend.x = x;
+		lineend.y = y;
+		lineend.valid = true;
+		glutPostRedisplay();
 	}
 }
 
@@ -108,11 +119,12 @@ void drawView(void)
 {
 	glColor3f(1.0f, 1.0f, 1.0f);
 	glBegin(GL_POINTS);
-	struct pt pos;
-	for(pos.x = 0; pos.x < VIEWWIDTH; pos.x++)
-		for(pos.y = 0; pos.y < VIEWHEIGHT; pos.y++) {
-			struct pt coord = dispToCoord(pos);
-			glVertex2i(coord.x, coord.y);
+	struct pt bound_bl = dispToCoord((struct pt){0, 0, false}),
+		bound_tr = dispToCoord((struct pt){VIEWWIDTH, VIEWHEIGHT, false}),
+		pos = {0, 0, true};
+	for(pos.x = bound_bl.x; pos.x < bound_tr.x; pos.x++)
+		for(pos.y = bound_bl.y; pos.y < bound_tr.y; pos.y++) {
+			glVertex2i(pos.x, pos.y);
 		}
 	glEnd();
 }
@@ -121,20 +133,36 @@ void resize(GLsizei width, GLsizei height)
 {
 	wnddim.x = width;
 	wnddim.y = height;
+	wnddim.valid = true;
 	glViewport(0, 0, width, height);
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
-	glOrtho(0.0, VIEWWIDTH + 2 * OFFWIDTH, 0.0,
-					VIEWHEIGHT + 2 * OFFHEIGHT, 0.0, 1.0);
+	glOrtho(0.0, width, 0.0,
+					height, 0.0, 1.0);
 	glMatrixMode(GL_MODELVIEW);
+}
+
+void keypress(unsigned char key, int x, int y)
+{
+	switch(key) {
+	case 'q':
+	case 'Q':
+		exit(0);
+	}
+}
+
+int gcf(int a, int b)
+{
+	if(a % b)
+		return gcf(b, a % b);
+	return b;
 }
 
 int main(int argc, char **argv)
 {
-	linestart.x = 0;
-	linestart.y = 0;
-	lineend.x = 0;
-	lineend.y = 0;
+	memset(&linestart, 0, sizeof(linestart));
+	memset(&lineend, 0, sizeof(lineend));
+	memset(&wnddim, 0, sizeof(wnddim));
 	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA);
 	glutInitWindowPosition(100, 10);
@@ -143,6 +171,7 @@ int main(int argc, char **argv)
 	glutDisplayFunc(display);
 	glutReshapeFunc(resize);
 	glutMouseFunc(mpress);
+	glutKeyboardFunc(keypress);
 	glutMainLoop();
   return 0;
 }
