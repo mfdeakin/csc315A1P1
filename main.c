@@ -60,21 +60,63 @@ void drawLine(void)
 	glColor3f(1.0f, 0.0f, 0.0f);
 	glBegin(GL_POINTS);
 	GLint deltax = lineend.x - linestart.x,
-		deltay = lineend.y - linestart.y;
-	
-	GLfloat mag = sqrt(deltax * deltax + deltay * deltay),
-		dx = deltax / mag,
-		dy = deltay / mag,
+		deltay = lineend.y - linestart.y,
 		x = 0,
 		y = 0;
-	while(abs(x) < abs(deltax) || abs(y) < abs(deltay)) {
-		x += dx;
-		y += dy;
-		glVertex2i(linestart.x + x,
-							 linestart.y + y);
+	
+	GLfloat m = (float)deltay / deltax;
+
+	if(m == INFINITY || m == NAN) {
+		while(y < deltay) {
+			glVertex2i(linestart.x, linestart.y + y);
+			y++;
+		}
+	}
+	else if(m == -INFINITY) {
+		while(y > deltay) {
+			glVertex2i(linestart.x, linestart.y + y);
+			y--;
+		}
+	}
+	else {
+		float residual = 0;
+		while(x > deltax) {
+			x--;
+			int cnt = 0;
+			do {
+				glVertex2i(linestart.x + x, linestart.y + y);
+				cnt++;
+				y--;
+			} while(cnt < m + residual);
+			do {
+				glVertex2i(linestart.x + x, linestart.y + y);
+				cnt--;
+				y++;
+			} while(cnt > m + residual);
+			residual = m + residual - cnt;
+		}
+		while(x < deltax) {
+			x++;
+			int cnt = 0;
+			do {
+				glVertex2i(linestart.x + x, linestart.y + y);
+				cnt++;
+				y++;
+			} while(cnt < m + residual);
+			do {
+				glVertex2i(linestart.x + x, linestart.y + y);
+				cnt--;
+				y--;
+			} while(cnt > m + residual);
+			residual = m + residual - cnt;
+		}
 	}
 	glEnd();
-	return;
+}
+
+void drawCircle()
+{
+	
 }
 
 struct pt dispToCoord(struct pt pos)
